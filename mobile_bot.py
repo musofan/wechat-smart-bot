@@ -1,7 +1,7 @@
-"""WeChat Mobile Bot - ADB + uiautomator2 + OCR.
+"""WeChat Mobile Bot - ADB + uiautomator2 + Vision/OCR.
 
-Uses phone screenshots + cnocr (larger text = better accuracy)
-to monitor and auto-reply to WeChat messages.
+Uses phone screenshots + AI Vision model for reliable screen understanding.
+Falls back to cnocr OCR when Vision API is not configured.
 """
 
 import time
@@ -9,6 +9,11 @@ import io
 import re
 import base64
 import numpy as np
+
+# Load .env before importing other modules
+from dotenv import load_dotenv
+load_dotenv()
+
 import uiautomator2 as u2
 from llm_client import generate_reply
 from database import init_db, save_conversation, get_conversation_history, save_message
@@ -357,11 +362,18 @@ class WeChatMobileBot:
 
     def should_skip(self, name):
         """Check if we should skip this conversation."""
-        skip_list = ['ClawBot', '文件传输助手', '公众号', '订阅号']
+        skip_list = [
+            'ClawBot', '文件传输助手', '公众号', '订阅号',
+            'Windows', '微信已登录', '手机通知',
+        ]
         for skip in skip_list:
             if skip in name:
                 return True
-        if '群' in name or '分享' in name:
+        # Skip group chats
+        if '群' in name or '分享' in name or '交流' in name:
+            return True
+        # Skip system-like messages
+        if '撤回' in name or '移出' in name:
             return True
         return False
 

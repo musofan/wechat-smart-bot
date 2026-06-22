@@ -109,16 +109,24 @@ class VisionClient:
         Returns list of conversations:
         [{"name": "...", "preview": "...", "time": "...", "has_unread": bool}]
         """
-        prompt = """分析这个微信聊天列表截图。请列出所有可见的对话，每个对话包含：
-1. name: 联系人/群名称
-2. preview: 最后一条消息预览
-3. time: 时间戳
-4. has_unread: 是否有未读消息（看是否有红色角标或蓝色数字）
+        prompt = """分析这个微信聊天列表截图。
+
+规则：
+1. 只列出真实的联系人/群聊对话
+2. 跳过系统通知（如"Windows微信已登录"）
+3. 跳过"折叠置顶聊天"等UI元素
+4. 跳过底部导航栏（微信/通讯录/发现/我）
+
+每个对话包含：
+- name: 联系人名称（不要包含预览内容）
+- preview: 最后一条消息的预览文字
+- time: 右侧显示的时间（如"19:09"或"5月28日"）
+- has_unread: 是否有红色角标或蓝色数字标记
 
 请用JSON数组格式返回，例如：
 [{"name": "张三", "preview": "你好", "time": "14:30", "has_unread": true}]
 
-只返回JSON，不要其他文字。"""
+只返回JSON数组，不要其他文字。"""
 
         result = self.analyze_screen(img, prompt)
 
