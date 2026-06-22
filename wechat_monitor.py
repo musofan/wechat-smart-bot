@@ -75,43 +75,52 @@ class WeChatMonitor:
     def find_unread_conversations(self):
         """Scan chat list for conversations with unread badges.
 
-        Returns list of (y_position, name_preview) for items with unread badges.
+        Returns list of y_positions for items with unread badges.
+        WeChat badge color: RGB(226, 71, 71) - bright red circle.
         """
         # Capture chat list area
         chat_list = self.capture_region(0.07, 0.09, 0.25, 0.85)
         img = np.array(chat_list)
 
-        # Look for red badge pixels (WeChat unread badge is red/orange)
-        # Badge is typically a small red circle with white number
-        red_mask = (img[:, :, 0] > 200) & (img[:, :, 1] < 100) & (img[:, :, 2] < 100)
+        # WeChat unread badge is bright red: RGB ~(226, 71, 71)
+        # Use a range that catches the badge color
+        r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+        badge_mask = (r > 200) & (r < 250) & (g > 50) & (g < 100) & (b > 50) & (b < 100)
 
-        # Find rows with red pixels (badge locations)
-        rows_with_badge = np.where(red_mask.any(axis=1))[0]
+        # Find rows with badge pixels
+        rows_with_badge = np.where(badge_mask.any(axis=1))[0]
 
         if len(rows_with_badge) == 0:
             return []
 
-        # Cluster badge rows into individual badges
+        # Cluster into individual badges
+        clusters = []
+        current_cluster = [rows_with_badge[0]]
+        for i in range(1, len(rows_with_badge)):
+            if rows_with_badge[i] - rows_with_badge[i-1] <= 3:
+                current_cluster.append(rows_with_badge[i])
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [rows_with_badge[i]]
+        clusters.append(current_cluster)
+
+        # Filter: real badges are ~15-40px tall circles
         conversations = []
-        if len(rows_with_badge) > 0:
-            clusters = []
-            current_cluster = [rows_with_badge[0]]
-            for i in range(1, len(rows_with_badge)):
-                if rows_with_badge[i] - rows_with_badge[i-1] <= 5:
-                    current_cluster.append(rows_with_badge[i])
-                else:
-                    clusters.append(current_cluster)
-                    current_cluster = [rows_with_badge[i]]
-            clusters.append(current_cluster)
+        left, top, right, bottom = self._window_rect
+        w, h = right - left, bottom - top
+        chat_list_h = chat_list.height
 
-            # Each cluster is a badge - map to chat list item position
-            left, top, right, bottom = self._window_rect
-            w, h = right - left, bottom - top
+        for cluster in clusters:
+            height = max(cluster) - min(cluster) + 1
+            # Also check column span
+            cluster_rows = badge_mask[min(cluster):max(cluster)+1, :]
+            cols = np.where(cluster_rows.any(axis=0))[0]
+            width = len(cols) if len(cols) > 0 else 0
 
-            for cluster in clusters:
+            # Badge filter: roughly square, 10-45px
+            if 10 <= height <= 45 and width >= 10:
                 badge_y_relative = (min(cluster) + max(cluster)) / 2
-                # Convert to window-relative Y position
-                badge_y = top + int(h * 0.09) + int(h * 0.85 * badge_y_relative / chat_list.height)
+                badge_y = top + int(h * 0.09) + int(h * 0.85 * badge_y_relative / chat_list_h)
                 conversations.append(badge_y)
 
         return conversations
@@ -132,15 +141,17 @@ class WeChatMonitor:
         # Save for debugging
         chat_area.save(r'C:\Users\Tung\wechat-smart-bot\data\last_chat.png')
 
-        # Use easyocr to read text
+        # Use cnocr to read text (lightweight Chinese OCR)
         try:
-            import easyocr
-            reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
-            result = reader.readtext(np.array(chat_area))
+            from cnocr import CnOcr
+            ocr = CnOcr()
+            result = ocr.ocr(np.array(chat_area))
 
             messages = []
-            for (bbox, text, conf) in result:
-                if conf > 0.4 and len(text.strip()) > 1:
+            for item in result:
+                text = item.get('text', '')
+                score = item.get('score', 0)
+                if score > 0.3 and len(text.strip()) > 1:
                     messages.append(text.strip())
             return messages
         except Exception as e:
@@ -236,10 +247,10 @@ class WeChatMonitor:
 
                 # OCR the header to get sender name
                 try:
-                    import easyocr
-                    reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
-                    header_result = reader.readtext(np.array(header))
-                    sender_name = header_result[0][1] if header_result else "Unknown"
+                    from cnocr import CnOcr
+                    ocr = CnOcr()
+                    header_result = ocr.ocr(np.array(header))
+                    sender_name = header_result[0]['text'] if header_result else "Unknown"
                 except:
                     sender_name = "Unknown"
 
@@ -267,8 +278,15 @@ class WeChatMonitor:
 
                 print(f"[RECV] {sender_name}: {latest_msg}")
 
-                # Check if we should reply (skip our own messages)
-                if sender_name in ("NeXT SCENE", "NeXTSCENE", "NEXTSCENE", Config.BOT_NAME):
+                # Check if we should reply (skip our own, bots, and known non-contacts)
+                skip_names = [
+                    Config.BOT_NAME, "NeXT SCENE", "NeXTSCENE", "NEXTSCENE",
+                    "微信ClawBot", "ClawBot", "文件传输助手",
+                ]
+                if any(skip in sender_name for skip in skip_names):
+                    continue
+                # Skip group chats (contain special characters or end with 群)
+                if "群" in sender_name or "分享" in sender_name:
                     continue
 
                 # Classify message
