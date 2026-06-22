@@ -13,19 +13,22 @@ def _get_client() -> OpenAI:
     )
 
 
-def generate_reply(conversation_history: list[dict], current_message: str) -> str:
+def generate_reply(conversation_history: list[dict], current_message: str,
+                    system_prompt: str = None) -> str:
     """Generate an auto-reply based on conversation context.
 
     Args:
         conversation_history: List of {"role": "user"/"assistant", "content": "..."}
         current_message: The latest incoming message text
+        system_prompt: Optional custom system prompt (defaults to Config.SYSTEM_PROMPT)
 
     Returns:
         Generated reply text
     """
     client = _get_client()
 
-    messages = [{"role": "system", "content": Config.SYSTEM_PROMPT}]
+    prompt = system_prompt or Config.SYSTEM_PROMPT
+    messages = [{"role": "system", "content": prompt}]
     messages.extend(conversation_history)
     messages.append({"role": "user", "content": current_message})
 
