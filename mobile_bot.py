@@ -10,10 +10,10 @@ import re
 import base64
 import numpy as np
 import uiautomator2 as u2
-from cnocr import CnOcr
 from llm_client import generate_reply
 from database import init_db, save_conversation, get_conversation_history, save_message
 from config import Config
+from vision_client import VisionClient
 
 
 class WeChatMobileBot:
@@ -35,7 +35,10 @@ class WeChatMobileBot:
         else:
             self.d = u2.connect()
 
-        self.ocr = CnOcr()
+        # Initialize Vision client (auto-detects provider)
+        self.vision = VisionClient(provider="auto")
+        print(f"[VISION] Provider: {self.vision.provider}")
+
         self._processed = set()
         self._monitor_wxid = "musomuso"
 
@@ -72,24 +75,71 @@ class WeChatMobileBot:
     def get_chat_list(self):
         """Read the chat list from phone screen.
 
+        Uses Vision model if available, falls back to OCR.
         Returns list of dicts: {name, preview, time, y_position}
         """
         img = self.screenshot()
-        img_array = np.array(img)
-        result = self.ocr.ocr(img_array)
 
-        # Parse OCR results into conversations
-        conversations = []
+        if self.vision.provider != "none":
+            # Use Vision model for reliable parsing
+            conversations = self.vision.analyze_wechat_chat_list(img)
+            # Add estimated Y positions (conversations are ~130px apart)
+            for i, conv in enumerate(conversations):
+                conv['y'] = 280 + i * 130  # Approximate positions
+            return conversations[:5]
+
+        # Fallback: OCR-based parsing (less reliable)
+        return self._ocr_chat_list(img)
+
+    def _ocr_chat_list(self, img):
+        """OCR-based chat list parsing (fallback)."""
+        from cnocr import CnOcr
+        ocr = CnOcr()
+        result = ocr.ocr(np.array(img))
+
         items = []
         for item in result:
             text = item.get('text', '')
             score = item.get('score', 0)
             pos = item.get('position', [])
-            if score > 0.4 and len(text) > 1:
+            if score > 0.3 and len(text) > 1:
                 y = (pos[0][1] + pos[2][1]) / 2 if len(pos) >= 2 else 0
                 items.append((y, text, score))
 
         items.sort(key=lambda x: x[0])
+
+        # Find time stamps and match names
+        time_items = [(y, t) for y, t, s in items
+                      if re.match(r'^\d{1,2}:\d{2}$', t) or re.match(r'^\d+月\d+日$', t)]
+
+        skip_patterns = ['撤回', '移出', '邀请', '加入了', 'Windows',
+                        '微信已登录', '折叠', '通讯录', '发现', '我']
+
+        results = []
+        for time_y, time_text in time_items:
+            if time_text == re.match(r'^\d{1,2}:\d{2}$', time_text):
+                continue  # Skip status bar time
+
+            candidates = []
+            for y, text, score in items:
+                if abs(y - time_y) < 150 and score > 0.3:
+                    if not any(skip in text for skip in skip_patterns):
+                        if not re.match(r'^\d{1,2}:\d{2}$', text) and not re.match(r'^\d+月\d+日$', text):
+                            if len(text) >= 2:
+                                candidates.append((y, text))
+
+            if candidates:
+                candidates.sort(key=lambda x: abs(x[0] - time_y))
+                name = candidates[0][1]
+                preview = ' '.join([t for _, t in candidates[1:3]])
+                results.append({
+                    'name': name,
+                    'preview': preview[:50],
+                    'time': time_text,
+                    'y': time_y,
+                })
+
+        return results[:5]
 
         # Smart parsing: find time/date stamps, then find the name above each
         import re
@@ -189,22 +239,37 @@ class WeChatMobileBot:
         time.sleep(1.5)
 
     def read_chat_messages(self):
-        """Read messages from the currently open chat."""
+        """Read messages from the currently open chat.
+
+        Uses Vision model if available, falls back to OCR.
+        """
         img = self.screenshot()
-        result = self.ocr.ocr(np.array(img))
+
+        if self.vision.provider != "none":
+            # Use Vision model
+            msg_list = self.vision.analyze_wechat_messages(img)
+            messages = []
+            for msg in msg_list:
+                if not msg.get('is_self', False):  # Only incoming messages
+                    content = msg.get('content', '')
+                    if content and len(content) > 1:
+                        messages.append(content)
+            return messages[-3:] if messages else []
+
+        # Fallback: OCR
+        from cnocr import CnOcr
+        ocr = CnOcr()
+        result = ocr.ocr(np.array(img))
 
         messages = []
+        skip_ui = ['按住', '语音', '输入', '发送', '切换到', '键盘', '表情', '收藏', '转账', '截图']
         for item in result:
             text = item.get('text', '')
             score = item.get('score', 0)
             if score > 0.5 and len(text.strip()) > 1:
-                # Skip UI elements
-                if not any(skip in text for skip in [
-                    '按住', '语音', '输入', '发送', '切换到',
-                    '键盘', '表情', '收藏', '转账', '截图'
-                ]):
+                if not any(skip in text for skip in skip_ui):
                     messages.append(text.strip())
-        return messages
+        return messages[-3:] if messages else []
 
     def send_reply(self, text):
         """Type and send a reply in the current chat."""
