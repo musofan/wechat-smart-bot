@@ -91,17 +91,52 @@ class WeChatMobileBot:
 
         items.sort(key=lambda x: x[0])
 
-        # Group by Y position (conversations are ~150px apart on phone)
-        current = {'y': 0, 'texts': []}
+        # Smart parsing: find time/date stamps, then find the name above each
+        import re
+        # Identify time/date items (they mark conversation boundaries)
+        time_items = []
         for y, text, score in items:
-            if y - current['y'] > 100:  # New conversation group
-                if current['texts']:
-                    conversations.append(current)
-                current = {'y': y, 'texts': []}
-            current['texts'].append(text)
-            current['y'] = y
-        if current['texts']:
-            conversations.append(current)
+            if re.match(r'^\d{1,2}:\d{2}$', text) or re.match(r'^\d+月\d+日$', text):
+                time_items.append((y, text))
+
+        # For each time stamp, find the name that's closest ABOVE it
+        results = []
+        # Skip system messages like "你撤回了一条消息"
+        skip_patterns = ['撤回', '移出', '邀请', '加入了', '加入了群聊',
+                        'Windows', '微信已登录', '折叠置顶', '通讯录', '发现', '我']
+
+        for time_y, time_text in time_items:
+            # Find items NEAR this timestamp (±150px, since name may be above or below)
+            candidates = []
+            for y, text, score in items:
+                if abs(y - time_y) < 150 and score > 0.4:
+                    # Skip system messages, UI elements, and other timestamps
+                    if not any(skip in text for skip in skip_patterns):
+                        if not re.match(r'^\d{1,2}:\d{2}$', text) and not re.match(r'^\d+月\d+日$', text):
+                            if len(text) >= 2:
+                                candidates.append((y, text))
+
+            # The name is typically the shortest text item near the timestamp
+            # (names are shorter than previews)
+            if candidates:
+                # Pick the item closest to the timestamp Y position
+                candidates.sort(key=lambda x: abs(x[0] - time_y))
+                name = candidates[0][1]
+                name_y = candidates[0][0]
+
+                # Find preview (other text items near this timestamp)
+                preview = ''
+                for y, text in candidates:
+                    if text != name:
+                        preview += text + ' '
+
+                results.append({
+                    'name': name,
+                    'preview': preview.strip()[:50],
+                    'time': time_text,
+                    'y': time_y,  # Use timestamp Y for clicking
+                    'all_texts': [name, preview.strip(), time_text],
+                })
 
         # Parse each conversation group
         results = []
@@ -209,6 +244,30 @@ class WeChatMobileBot:
         self.d.press("back")
         time.sleep(0.5)
 
+    def ensure_chat_list(self):
+        """Ensure we're on the chat list view."""
+        import subprocess
+        adb = r'C:\Users\Tung\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+
+        # Check current activity
+        current = self.d.app_current()
+        if current.get('package') != 'com.tencent.mm':
+            # Launch WeChat
+            subprocess.run([adb, 'shell', 'am', 'start', '-n',
+                          'com.tencent.mm/.ui.LauncherUI'])
+            time.sleep(2)
+        else:
+            # Try clicking '微信' tab using ADB (more reliable)
+            # First try pressing back a few times to get to main screen
+            for _ in range(3):
+                self.d.press("back")
+                time.sleep(0.3)
+
+            # Then launch the main activity
+            subprocess.run([adb, 'shell', 'am', 'start', '-n',
+                          'com.tencent.mm/.ui.LauncherUI'])
+            time.sleep(1.5)
+
     def should_skip(self, name):
         """Check if we should skip this conversation."""
         skip_list = ['ClawBot', '文件传输助手', '公众号', '订阅号']
@@ -301,11 +360,8 @@ class WeChatMobileBot:
 
         while True:
             try:
-                # Ensure WeChat is in foreground
-                current = self.d.app_current()
-                if current.get('package') != 'com.tencent.mm':
-                    self.d.app_start('com.tencent.mm')
-                    time.sleep(1)
+                # Ensure WeChat is on chat list
+                self.ensure_chat_list()
 
                 # Scan chat list
                 chats = self.get_chat_list()
