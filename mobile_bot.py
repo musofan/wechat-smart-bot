@@ -234,8 +234,12 @@ class WeChatMobileBot:
 
     def open_chat(self, y_position):
         """Tap on a chat at the given Y position (relative to screen)."""
-        # WeChat chat list items are typically in the middle of screen width
-        self.d.click(540, int(y_position))  # Center of 1080px width
+        # Use ADB for more reliable tapping
+        import subprocess
+        adb = r'C:\Users\Tung\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+        x = 540  # Center of 1080px width
+        y = int(y_position)
+        subprocess.run([adb, 'shell', 'input', 'tap', str(x), str(y)])
         time.sleep(1.5)
 
     def read_chat_messages(self):
@@ -273,35 +277,57 @@ class WeChatMobileBot:
 
     def send_reply(self, text):
         """Type and send a reply in the current chat."""
-        # Find and tap input area (bottom of screen)
-        self.d.click(400, 2200)  # Approximate input area position
+        import subprocess
+        adb = r'C:\Users\Tung\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+
+        # Tap input area (bottom center of chat)
+        subprocess.run([adb, 'shell', 'input', 'tap', '400', '2150'])
         time.sleep(0.5)
 
-        # Type text
-        self.d.send_keys(text)
+        # Use ADB to input text (supports Chinese via clipboard)
+        # Set clipboard text
+        subprocess.run([adb, 'shell', 'am', 'broadcast',
+                       '-a', 'clipper.set', '-e', 'text', text],
+                      capture_output=True)
+        time.sleep(0.2)
+
+        # Try using uiautomator2 for text input (more reliable for Chinese)
+        try:
+            # Find input field
+            input_field = self.d(className="android.widget.EditText")
+            if input_field.exists:
+                input_field.set_text(text)
+            else:
+                # Fallback: use ADB keyboard
+                self.d.send_keys(text)
+        except:
+            self.d.send_keys(text)
+
         time.sleep(0.3)
 
-        # Tap send button
-        # Try to find send button by text
-        if self.d(text="发送").exists:
+        # Find and tap send button
+        if self.d(text="发送").exists(timeout=2):
             self.d(text="发送").click()
         else:
-            # Try clicking send button position
-            self.d.click(980, 2200)
+            # Try coordinates for send button
+            subprocess.run([adb, 'shell', 'input', 'tap', '1000', '2150'])
         time.sleep(0.5)
 
     def open_chat_by_name(self, name):
         """Open a chat by tapping search and typing name."""
-        # Tap search icon
-        self.d.click(900, 140)
+        import subprocess
+        adb = r'C:\Users\Tung\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+
+        # Tap search icon (top right area)
+        subprocess.run([adb, 'shell', 'input', 'tap', '900', '140'])
         time.sleep(0.5)
 
-        # Type name
-        self.d.send_keys(name)
+        # Type name using ADB
+        subprocess.run([adb, 'shell', 'input', 'text', name.replace(' ', '%s')])
         time.sleep(2)
 
         # Tap first result
-        self.d.click(540, 300)
+        subprocess.run([adb, 'shell', 'input', 'tap', '540', '300'])
         time.sleep(1.5)
 
     def go_back(self):
@@ -314,24 +340,20 @@ class WeChatMobileBot:
         import subprocess
         adb = r'C:\Users\Tung\AppData\Local\Android\Sdk\platform-tools\adb.exe'
 
-        # Check current activity
+        # Always launch the main activity to ensure we're on chat list
+        subprocess.run([adb, 'shell', 'am', 'start', '-n',
+                      'com.tencent.mm/.ui.LauncherUI',
+                      '-a', 'android.intent.action.MAIN',
+                      '-c', 'android.intent.category.LAUNCHER'],
+                     capture_output=True)
+        time.sleep(1.5)
+
+        # Verify we're in WeChat
         current = self.d.app_current()
         if current.get('package') != 'com.tencent.mm':
-            # Launch WeChat
-            subprocess.run([adb, 'shell', 'am', 'start', '-n',
-                          'com.tencent.mm/.ui.LauncherUI'])
+            # Try force starting
+            self.d.app_start('com.tencent.mm')
             time.sleep(2)
-        else:
-            # Try clicking '微信' tab using ADB (more reliable)
-            # First try pressing back a few times to get to main screen
-            for _ in range(3):
-                self.d.press("back")
-                time.sleep(0.3)
-
-            # Then launch the main activity
-            subprocess.run([adb, 'shell', 'am', 'start', '-n',
-                          'com.tencent.mm/.ui.LauncherUI'])
-            time.sleep(1.5)
 
     def should_skip(self, name):
         """Check if we should skip this conversation."""
