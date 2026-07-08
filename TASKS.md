@@ -5,7 +5,7 @@ Every task: add tests (offline/mocked), keep the baseline green. Honor DEV_BRIEF
 
 ## P1 — Suggest-only pipeline (highest priority)
 
-- [ ] **T1. Config surface.** Extend `config.py` with typed settings loaded from `.env`/defaults:
+- [x] **T1. Config surface.** Extend `config.py` with typed settings loaded from `.env`/defaults:
   `PERSONA_PROMPT` (natural-person), `MONITOR_ACCOUNT` (default `musomuso`), `BOT_ACCOUNT`
   (`NeXTSCENE小助手`), `SKIP_NAMES` (bots/self/公众号), `GROUP_MARKERS`, `SENSITIVE_KEYWORDS`
   (投诉/退款/赔偿/合同/报价/律师…), `BUSINESS_HOURS`, `SCAN_INTERVAL`, `DRY_RUN=True`, `MODE=SUGGEST`.
