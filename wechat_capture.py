@@ -148,6 +148,13 @@ class WeixinCapture:
         box = (int(W * x), int(H * y), int(W * (x + w)), int(H * (y + h)))
         return base.crop(box)
 
+    @staticmethod
+    def is_blank(img: Image.Image, mean_threshold: float = 8.0) -> bool:
+        """True if a capture looks blank/black. PrintWindow can occasionally return
+        a black frame on some GPU compositions; callers should retry when blank."""
+        import numpy as np
+        return float(np.asarray(img.convert("L")).mean()) < mean_threshold
+
 
 if __name__ == "__main__":
     import sys

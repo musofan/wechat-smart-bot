@@ -15,14 +15,27 @@ import os
 from PIL import Image
 
 
-def run_frames(bot, frames_dir: str, log=print) -> int:
-    """Replay saved PNG frames through the bot. Returns number of suggestions made."""
+def run_frames(bot, frames_dir: str, log=print, report=None) -> int:
+    """Replay saved PNG frames through the bot. One bad frame never stops the run.
+    Returns number of suggestions made."""
     n = 0
     for path in sorted(glob.glob(os.path.join(frames_dir, "*.png"))):
-        img = Image.open(path).convert("RGB")
-        sug = bot.handle_open_conversation(img)
+        try:
+            img = Image.open(path).convert("RGB")
+            sug = bot.handle_open_conversation(img)
+        except Exception as e:  # isolate per-frame failure
+            log(f"[ERROR] {path}: {e}")
+            if report is not None:
+                report.errors += 1
+            continue
+        if report is not None:
+            report.scanned += 1
         if sug:
             n += 1
+            if report is not None:
+                report.suggested += 1
+                if sug.needs_confirmation:
+                    report.needs_confirm += 1
             flag = "  ⚠需确认" if sug.needs_confirmation else ""
             log(f"[SUGGEST] {sug.contact}: {sug.incoming!r} -> {sug.draft_reply!r}{flag}")
     return n
