@@ -11,6 +11,7 @@ Weixin 4.1.10.53. Adjust in LAYOUT if the window chrome changes.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -33,6 +34,48 @@ _UI_NOISE = (
     "微信电脑版", "折叠置顶聊天",
 )
 
+# A chat-list row's time column, e.g. "14:33", "昨天22:53", "星期一", "昨天", "2025/1/1".
+_TS_RE = re.compile(
+    r"^(?:昨天|前天|上午|下午|凌晨|早上|中午|晚上)?\s*\d{1,2}:\d{2}$"
+    r"|^(?:昨天|前天|星期[一二三四五六日天]|周[一二三四五六日天])$"
+    r"|^\d{2,4}[-/]\d{1,2}[-/]\d{1,2}$"
+)
+# Media/snippet placeholders → a normalized kind.
+_MEDIA = {
+    "[图片]": "image", "[视频]": "video", "[语音]": "voice", "[文件]": "file",
+    "[链接]": "link", "[位置]": "location", "[动画表情]": "sticker", "[表情]": "sticker",
+    "[名片]": "card", "[转账]": "transfer", "[红包]": "redpacket",
+}
+
+
+def parse_list_row(texts: list[str]) -> tuple[str, str, str, str]:
+    """Split a chat-list row's OCR lines into (name, timestamp, snippet, kind).
+
+    The timestamp column is pulled out wherever it landed; the first remaining
+    line is the contact/group name and the rest is the message preview. A leading
+    unread-count marker like ``[3条]`` is stripped from the preview.
+    """
+    ts = ""
+    kept: list[str] = []
+    for t in texts:
+        s = t.strip()
+        if not s:
+            continue
+        if _TS_RE.match(s):
+            ts = s
+        else:
+            kept.append(s)
+    name = kept[0] if kept else ""
+    snippet = " ".join(kept[1:]) if len(kept) > 1 else ""
+    snippet = re.sub(r"^\[\d+条\]", "", snippet).strip()
+    joined = " ".join(texts)
+    kind = "text"
+    for tag, k in _MEDIA.items():
+        if tag in joined:
+            kind = k
+            break
+    return name, ts, snippet, kind
+
 
 @dataclass
 class OcrLine:
@@ -50,12 +93,18 @@ class Conversation:
     # y-center in FULL-window pixels (for later clicking)
     y_full: int
     has_unread: bool = False
+    timestamp: str = ""
+    snippet_kind: str = "text"  # text|image|voice|file|link|...
     lines: list[str] = field(default_factory=list)
 
 
 class WeixinVision:
-    def __init__(self) -> None:
+    def __init__(self, layout: dict | None = None) -> None:
         self._ocr = None
+        # per-instance layout override (falls back to module defaults)
+        self.layout = dict(LAYOUT)
+        if layout:
+            self.layout.update(layout)
 
     def _engine(self):
         if self._ocr is None:
@@ -90,7 +139,7 @@ class WeixinVision:
     def detect_unread_rows(self, full: Image.Image) -> list[int]:
         """Return FULL-window y-pixels of chat-list rows that show a red badge."""
         W, H = full.size
-        x, y, w, h = LAYOUT["chat_list_badges"]
+        x, y, w, h = self.layout["chat_list_badges"]
         crop = full.crop((int(W * x), int(H * y), int(W * (x + w)), int(H * (y + h))))
         arr = np.array(crop.convert("RGB"))
         mask = self._red_mask(arr)
@@ -110,7 +159,7 @@ class WeixinVision:
     def has_nav_badge(self, full: Image.Image) -> bool:
         """True if the nav-rail chat icon shows a red unread badge."""
         W, H = full.size
-        x, y, w, h = LAYOUT["nav_rail"]
+        x, y, w, h = self.layout["nav_rail"]
         crop = full.crop((int(W * x), int(H * y), int(W * (x + w)), int(H * (y + h))))
         return int(self._red_mask(np.array(crop.convert("RGB"))).sum()) > 8
 
@@ -127,7 +176,7 @@ class WeixinVision:
     def read_chat_list(self, full: Image.Image) -> list[Conversation]:
         """OCR the chat list and group lines into conversations by y-position."""
         W, H = full.size
-        x, y, w, h = LAYOUT["chat_list"]
+        x, y, w, h = self.layout["chat_list"]
         crop_top = int(H * y)
         crop = full.crop((int(W * x), crop_top, int(W * (x + w)), int(H * (y + h))))
         lines = self.ocr(crop, min_score=0.4)
@@ -143,10 +192,11 @@ class WeixinVision:
                 return
             y_full = crop_top + int(sum(l.cy for l in g) / len(g))
             texts = [l.text for l in g]
+            name, ts, snippet, kind = parse_list_row(texts)
             has_unread = any(abs(u - y_full) < 26 for u in unread_ys)
             convs.append(Conversation(
-                name=texts[0], snippet=" ".join(texts[1:]) if len(texts) > 1 else "",
-                y_full=y_full, has_unread=has_unread, lines=texts,
+                name=name, snippet=snippet, y_full=y_full, has_unread=has_unread,
+                timestamp=ts, snippet_kind=kind, lines=texts,
             ))
 
         for l in lines:
@@ -171,5 +221,5 @@ class WeixinVision:
 
     def _crop(self, full: Image.Image, key: str) -> Image.Image:
         W, H = full.size
-        x, y, w, h = LAYOUT[key]
+        x, y, w, h = self.layout[key]
         return full.crop((int(W * x), int(H * y), int(W * (x + w)), int(H * (y + h))))

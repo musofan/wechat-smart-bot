@@ -2,7 +2,29 @@
 
 import numpy as np
 
-from wechat_vision import LAYOUT, WeixinVision
+from wechat_vision import LAYOUT, WeixinVision, parse_list_row
+
+
+def test_parse_list_row_splits_name_time_snippet():
+    name, ts, snippet, kind = parse_list_row(["蒋智华", "14:33", "您视频卡住了"])
+    assert name == "蒋智华"
+    assert ts == "14:33"
+    assert snippet == "您视频卡住了"
+    assert kind == "text"
+
+
+def test_parse_list_row_media_and_count_marker():
+    name, ts, snippet, kind = parse_list_row(["706上海5群", "昨天22:53", "[4条][图片]"])
+    assert name == "706上海5群"
+    assert ts == "昨天22:53"
+    assert kind == "image"
+    assert not snippet.startswith("[4条]")
+
+
+def test_parse_list_row_weekday_timestamp():
+    name, ts, snippet, kind = parse_list_row(["MakerMods小龙虾", "星期一", "Muso-上海:"])
+    assert name == "MakerMods小龙虾"
+    assert ts == "星期一"
 
 
 def test_layout_has_all_regions():
