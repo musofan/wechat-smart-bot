@@ -71,6 +71,37 @@ class Bot:
         )
         return sug if inserted else None
 
+    # ---- gated SEND path (never fires under the safe defaults) ----
+    def send_reply(self, sug: Suggestion, safety) -> tuple[bool, str]:
+        """Send a reply ONLY when every gate passes: MODE=='SEND', not DRY_RUN,
+        the message doesn't need human confirmation, and the safety envelope
+        allows it. Returns (sent, reason). Under default config nothing is sent."""
+        if getattr(self.config, "MODE", "SUGGEST") != "SEND":
+            return False, "MODE != SEND (suggest-only)"
+        if getattr(self.config, "DRY_RUN", True):
+            return False, "DRY_RUN active"
+        if sug.needs_confirmation:
+            return False, "needs human confirmation"
+        ok, why = safety.can_send()
+        if not ok:
+            return False, why
+        self.actuator.send_text(sug.draft_reply)
+        safety.record_send()
+        return True, "sent"
+
+    @staticmethod
+    def parse_monitor_command(text: str) -> dict:
+        """Parse a monitor-account confirmation reply: '1'=approve AI draft,
+        '2 <text>'=custom reply, '3'=skip."""
+        t = (text or "").strip()
+        if t == "1":
+            return {"action": "approve"}
+        if t.startswith("2"):
+            return {"action": "custom", "text": t[1:].strip()}
+        if t == "3":
+            return {"action": "skip"}
+        return {"action": "none"}
+
     @staticmethod
     def forward_record(sug: Suggestion) -> str:
         status = "待人工确认" if sug.needs_confirmation else "已生成建议(未发送)"

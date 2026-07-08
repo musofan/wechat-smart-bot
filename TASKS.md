@@ -54,19 +54,19 @@ Every task: add tests (offline/mocked), keep the baseline green. Honor DEV_BRIEF
 
 ## P2 — Action layer (coded + tested via fakes, gated OFF overnight)
 
-- [ ] **T8. `wechat_actuator.py`.** `Actuator` protocol; `DryRunActuator` (logs intended actions);
+- [x] **T8. `wechat_actuator.py`.** `Actuator` protocol; `DryRunActuator` (logs intended actions);
   `LiveActuator` using `win32clipboard` paste + `ctypes` `SendInput` + click at (x,y), with
   human-like log-normal delays and optional bezier mouse move. `open_conversation(y)`, `focus_input()`,
   `send_text(text)`. Default factory returns DryRun when `DRY_RUN`.
   *Done when:* `tests/test_actuator.py` asserts `DryRunActuator` records the right action sequence for
   a send; `LiveActuator` is imported but NOT executed (guard with `@pytest.mark.live`).
 
-- [ ] **T9. Safety envelope `safety.py`.** Rate limiter (min gap + per-hour cap), business-hours gate,
+- [x] **T9. Safety envelope `safety.py`.** Rate limiter (min gap + per-hour cap), business-hours gate,
   existing-conversation-only guard, and a kill-switch (`data/STOP` file halts sending). `can_send()`
   returns (bool, reason).
   *Done when:* `tests/test_safety.py` covers each gate (freeze time via injected clock).
 
-- [ ] **T10. SEND mode wiring (guarded).** In `bot_core`, add `MODE=SEND` path that, *only if*
+- [x] **T10. SEND mode wiring (guarded).** In `bot_core`, add `MODE=SEND` path that, *only if*
   `not DRY_RUN and safety.can_send()`, would call the actuator to reply + forward. Since DRY_RUN is
   True, this path uses the DryRun actuator. Add the human-confirm queue (monitor replies `1`/`2 <text>`/`3`).
   *Done when:* `tests/test_send_flow.py` uses a DryRun actuator + `DRY_RUN=True` and asserts NO real
