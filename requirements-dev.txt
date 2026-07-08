@@ -4,3 +4,4 @@ ruff>=0.5
 numpy>=1.24.0
 Pillow>=10.0.0
 pywin32>=306
+python-dotenv>=1.0.0  # config.py imports it; keep CI env able to import config
