@@ -10,3 +10,10 @@ venv/
 # runtime captures (may contain private chats)
 data/dryrun_*.png
 data/capture*.png
+
+# CI monitor runtime output (regenerated continuously; not for commits)
+.ci/STATUS.md
+.ci/ci_history.log
+.ci/monitor_heartbeat.txt
+data/suggestions.jsonl
+data/STOP
