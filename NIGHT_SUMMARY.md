@@ -1,10 +1,17 @@
 # 夜间开发总结 (2026-07-09)
 
-## TL;DR
-Cline **整晚被卡住**（它的 GLM-5.2 模型 API 返回 429 quota_exceeded，自动重试失败、等待人工点
-Retry）。为不浪费这一夜，**Claude 直接接管开发**，在分支 `claude/wechat-bot-automation-cd5a36`
-上把 `TASKS.md` 的 **P1 + P2 + 硬化 + 文档（T1–T14）** 全部实现并测试通过。**没动 Cline 的
-`night-build` 分支**，你早上可任选：合并我的分支，或点 Retry / 换模型让 Cline 重跑。
+## TL;DR（含 02:30 更新）
+1) Cline 前半夜被卡住（GLM-5.2 API 429 quota_exceeded），零产出。为不浪费一夜，**Claude 直接接管**，
+在分支 `claude/wechat-bot-automation-cd5a36` 上把 `TASKS.md` 的 **P1+P2+硬化+文档（T1–T14）+审阅CLI**
+全部实现，**43 测试全绿、GitHub Actions 通过**。
+2) **~01:38 Cline 额度恢复、自己开始干了**，在 `night-build` 上提交了 T2–T7（vision/reader/reply/
+store/bot_core/run_suggest）。**但它的 CI 一直红**：`config.py` 硬 `import dotenv`，而精简 CI 环境没装
+`python-dotenv` → 测试全在收集期 `ModuleNotFoundError`。我修好了 CI 监控（改为汇报 GitHub Actions 的
+真实结论到 `.ci/STATUS.md`，之前因本机装了 dotenv 而误报绿），Cline 下个任务读到后应会修掉。
+
+**所以现在有两条线**：
+- `claude/wechat-bot-automation-cd5a36`（我的）：**完整、全绿**，可直接用。
+- `night-build`（Cline 的）：进行中、目前 CI 红（就差一个 dotenv 修复）。
 
 - ✅ 41 个离线单测全绿，ruff 干净，GitHub Actions 每次 push 均通过。
 - ✅ **真机端到端只读冒烟测试通过**：`python run_suggest.py --once` 成功抓屏+OCR+识别未读会话，全程不发送。
@@ -31,16 +38,21 @@ P1 建议模式（T1–T7）· P2 门控动作层（T8–T10）· 硬化（T11�
 - `tests/`：41 个 mock 测试（`@pytest.mark.live` 的需 `--run-live`）
 
 ## 早上如何对接（二选一）
-**A. 采用我的实现（推荐）**：把我的分支合到 `night-build`（Cline 无产出，零冲突）：
+> 注意：现在两条线都有代码，不能简单快进合并；请二选一。
+
+**A. 采用我的实现（最快拿到可用、全绿的完整版本）**：
 ```
 cd C:\Users\Tung\Documents\GitHub\wechat-smart-bot
-git checkout night-build
-git merge --ff-only origin/claude/wechat-bot-automation-cd5a36   # 应可快进
+git checkout claude/wechat-bot-automation-cd5a36
+python run_suggest.py --frames data\frames    # 按 RUNBOOK 试跑
 ```
-然后按 `RUNBOOK.md` 试跑 `python run_suggest.py --frames data\frames`。
+满意的话可把它设为主线（如 `git branch -f master ...` 或直接在此分支上继续）。
 
-**B. 仍用 Cline**：在 Cline 面板点 **Retry**（若额度已恢复），或切换到有额度的模型；它会按
-`TASKS.md` 重做。可先参考我的分支。
+**B. 继续用 Cline 的 `night-build`**：它进度到 T7，但 CI 红。让 Cline 读 `.ci/STATUS.md`（已是
+真实的 GitHub Actions 结论）并修复 `config.py` 的 dotenv 导入（改成 try/except 可选，或把
+`python-dotenv` 加进 `requirements-dev.txt`——我在自己分支已这么做）。修完 T8–T14 仍需 Cline 完成。
+
+**建议**：直接用 A（完整全绿），把 B 当参考；或对比两版实现后择优。
 
 ## 还没做 / 建议下一步（需你在场）
 - 填充 `knowledge_base.md` 真实业务内容（回复质量的关键）。
