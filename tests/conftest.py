@@ -52,9 +52,11 @@ class FakeLLM:
         self.needs_confirmation = needs_confirmation
         self.reason = reason
         self.calls = []
+        self.last_system_prompt = None
 
     def generate_reply(self, history, message, system_prompt=None):
         self.calls.append(("generate", message))
+        self.last_system_prompt = system_prompt
         return self.reply
 
     def classify_message(self, message, history=None):

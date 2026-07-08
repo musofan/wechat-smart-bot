@@ -87,6 +87,9 @@ class Config:
     # ---- Database ----
     DB_PATH: str = str(PROJECT_ROOT / "data" / "bot.db")
 
+    # ---- Knowledge base ----
+    KB_PATH: str = str(PROJECT_ROOT / "knowledge_base.md")
+
     # ---- System Prompt (legacy, kept for compat) ----
     SYSTEM_PROMPT: str = """你是一个专业的微信客服助手。请根据以下规则回复：
 
@@ -96,6 +99,15 @@ class Config:
 4. 不要编造不确定的信息
 5. 用中文回复，语气亲切自然
 6. 不要暴露你是AI助手"""
+
+
+def load_knowledge_base() -> str:
+    """Load the business knowledge base (facts the bot may rely on). Empty if missing."""
+    path = Path(Config.KB_PATH)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return ""
 
 
 def validate_config() -> list[str]:
