@@ -17,10 +17,12 @@ HIST="$REPO/.ci/ci_history.log"
 BEAT="$REPO/.ci/monitor_heartbeat.txt"
 
 last=""
+mkdir -p "$REPO/.ci" "$REPO/data" 2>/dev/null
 echo "[monitor] watching '$BRANCH' every ${INTERVAL}s; python=$PY" >> "$HIST"
 
 while true; do
   ts="$(date '+%Y-%m-%d %H:%M:%S')"
+  mkdir -p "$REPO/.ci" 2>/dev/null
   echo "alive $ts (last=$last)" > "$BEAT"
   cd "$REPO" 2>/dev/null || { sleep "$INTERVAL"; continue; }
 
