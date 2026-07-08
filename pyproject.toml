@@ -1,0 +1,24 @@
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q -m 'not live'"
+testpaths = ["tests"]
+markers = [
+    "live: requires a live Weixin window and/or real RapidOCR (skipped unless --run-live)",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# Legacy pre-refactor scripts still live in the tree during the migration.
+extend-exclude = [
+    "wechat_smart_monitor.py",
+    "wechat_computer_use.py",
+    "wechat_monitor.py",
+    "channel1_ilink_bot.py",
+    "main.py",
+]
+
+[tool.ruff.lint]
+# Conservative "must never be broken" set so the baseline stays green while Cline
+# adds features. Cline should run the FULL default ruff on its own new files.
+select = ["E9", "F63", "F7", "F82", "F401", "F811"]

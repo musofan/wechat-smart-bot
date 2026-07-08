@@ -1,0 +1,6 @@
+# Minimal set to import + run the MOCK test suite in CI (no live window, no real OCR).
+pytest>=8.0
+ruff>=0.5
+numpy>=1.24.0
+Pillow>=10.0.0
+pywin32>=306

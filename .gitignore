@@ -6,3 +6,7 @@ __pycache__/
 .venv/
 venv/
 *.log
+
+# runtime captures (may contain private chats)
+data/dryrun_*.png
+data/capture*.png
