@@ -81,7 +81,7 @@ Every task: add tests (offline/mocked), keep the baseline green. Honor DEV_BRIEF
   written on exit (counts: scanned/suggested/needs-confirm/skipped).
   *Done when:* a test asserts the report is produced from a fake run.
 
-- [ ] **T13. Docs.** Write `RUNBOOK.md`: how to run `run_suggest.py --once --frames`, how to run live
+- [x] **T13. Docs.** Write `RUNBOOK.md`: how to run `run_suggest.py --once --frames`, how to run live
   suggest-mode (with the operator present), and the exact, deliberate steps to LATER enable send-mode
   (flip DRY_RUN, pick a safe test contact = 文件传输助手 first). Update `README.md` module map.
   *Done when:* files exist and are accurate; links resolve.
