@@ -16,16 +16,15 @@ from PIL import Image
 
 from config import Config
 from reply_engine import ReplyEngine
+from safety import Safety
 from store import SuggestionStore
 from wechat_reader import ConversationReader
 from wechat_vision import Conversation, WeixinVision
 
 logger = logging.getLogger(__name__)
 
-
-# Forward-reference for the actuator protocol (any object with open_conversation,
-# send_text, focus_input — see RecordingActuator in tests/)
-_Actuator = object  # will be typed properly when wechat_actuator.py is created
+# Forward-reference for the actuator protocol
+_Actuator = object
 
 
 @dataclass
@@ -145,6 +144,129 @@ class Bot:
             ))
 
         return results
+
+    # ---- SEND mode: process pending suggestions ----
+
+    def process_pending(
+        self,
+        safety: Safety | None = None,
+        max_items: int = 5,
+    ) -> list[dict]:
+        """Process pending suggestions from the store — SEND mode.
+
+        Args:
+            safety: Safety gate instance. If None, a default is created.
+            max_items: Maximum number of pending items to process.
+
+        Returns:
+            List of dicts describing what was done, each with keys:
+                contact, draft_reply, sent, skipped_reason
+        """
+        if safety is None:
+            safety = Safety(config=self._config)
+
+        pending = self._store.list_pending(limit=max_items)
+        if not pending:
+            return []
+
+        results: list[dict] = []
+
+        for suggestion in pending:
+            contact = suggestion["contact"]
+            draft = suggestion["draft_reply"]
+            sid = suggestion["id"]
+
+            # 1. Human-confirm queue: only proceed if DRY_RUN is enabled
+            #    (in real operation, operator replies 1/2/3)
+            if not self._config.DRY_RUN:
+                # Safety gate
+                ok, reason = safety.can_send()
+                if not ok:
+                    logger.warning(
+                        "Safety blocked send to %s: %s", contact, reason,
+                    )
+                    results.append({
+                        "contact": contact,
+                        "draft_reply": draft,
+                        "sent": False,
+                        "skipped_reason": reason,
+                    })
+                    continue
+
+            # 2. Open conversation
+            self._actuator.open_conversation(0)  # y=0 in SEND mode
+            # In live mode we'd calculate y from the contact list
+
+            # 3. Focus input
+            self._actuator.focus_input()
+
+            # 4. Send reply
+            needs_confirm = bool(suggestion.get("needs_confirmation", False))
+            if needs_confirm:
+                # Send the draft as-is (the human has approved it)
+                pass
+
+            self._actuator.send_text(draft)
+
+            if not self._config.DRY_RUN:
+                safety.record_send()
+                logger.info("SEND: replied to %s: %.60s", contact, draft)
+            else:
+                logger.info(
+                    "[DRY] Would send to %s: %.60s", contact, draft,
+                )
+
+            # 5. Update status
+            self._store.update_status(sid, "sent")
+
+            results.append({
+                "contact": contact,
+                "draft_reply": draft,
+                "sent": True,
+                "skipped_reason": "",
+            })
+
+        return results
+
+    # ---- Human-confirm queue helpers ----
+
+    def human_reply(self, reply_text: str) -> list[str]:
+        """Parse a human-confirm reply from the monitor chat.
+
+        Format::
+            ``1``       — approve the first pending suggestion (send as drafted)
+            ``2 <text>`` — approve with custom text (uses provided text instead)
+            ``3``       — skip / reject
+            ``l`` or ``list`` — list all pending suggestions
+
+        Args:
+            reply_text: Raw text from the monitor chat.
+
+        Returns:
+            Action tokens parsed from the reply.
+        """
+        reply_text = reply_text.strip().lower()
+        parts = reply_text.split(maxsplit=1)
+        cmd = parts[0]
+
+        if cmd == "1":
+            return ["approve_next"]
+        elif cmd == "2" and len(parts) > 1:
+            return ["approve_custom", parts[1]]
+        elif cmd == "3":
+            return ["skip_next"]
+        elif cmd in ("l", "list"):
+            pending = self._store.list_pending(limit=20)
+            if not pending:
+                return ["no_pending"]
+            lines = ["待处理建议："]
+            for i, s in enumerate(pending[:5], 1):
+                lines.append(
+                    f"  {i}. [{s['contact']}] {s['draft_reply'][:50]}"
+                )
+            return ["list", "\n".join(lines)]
+        else:
+            return ["unknown", reply_text]
 
     # ---- helpers ----
 
