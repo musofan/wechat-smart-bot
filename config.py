@@ -6,11 +6,14 @@ All new features are gated behind DRY_RUN=True and MODE=SUGGEST.
 
 import os
 from pathlib import Path
-from dotenv import load_dotenv
 
-# Load .env file from project root
+# Load .env file from project root (optional dep — CI may not have python-dotenv)
 PROJECT_ROOT = Path(__file__).parent
-load_dotenv(PROJECT_ROOT / ".env")
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except Exception:
+    pass
 
 
 def _bool_from_env(key: str, default: bool) -> bool:
