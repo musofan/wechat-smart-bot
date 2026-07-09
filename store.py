@@ -146,6 +146,26 @@ class SuggestionStore:
 
     # ---- helpers ----
 
+    def get_counts(self) -> dict[str, int]:
+        """Return counts of suggestions grouped by status.
+
+        Returns:
+            Dict with keys for each status value found in the DB, plus
+            a ``needs_confirmation`` count.
+        """
+        rows = self._conn.execute(
+            "SELECT status, COUNT(*) as cnt FROM suggestions GROUP BY status"
+        ).fetchall()
+        counts: dict[str, int] = {r["status"]: r["cnt"] for r in rows}
+
+        # Add needs_confirmation from the full set
+        confirm_row = self._conn.execute(
+            "SELECT COUNT(*) as cnt FROM suggestions WHERE needs_confirmation = 1"
+        ).fetchone()
+        counts["needs_confirmation"] = confirm_row["cnt"] if confirm_row else 0
+
+        return counts
+
     def _hash(self, text: str) -> str:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 

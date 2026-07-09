@@ -115,7 +115,7 @@ def run_loop(
     interval: int = 5,
     once: bool = False,
     frames_dir: str | None = None,
-) -> None:
+) -> int:
     """Run the bot loop.
 
     Args:
@@ -123,6 +123,9 @@ def run_loop(
         interval: Seconds between ticks.
         once: If True, run one tick and exit.
         frames_dir: If set, read .png files from this dir as input instead of live capture.
+
+    Returns:
+        Number of ticks executed.
     """
     logger.info(
         "Starting bot (mode=%s, dry_run=%s, interval=%ds, once=%s, frames=%s)",
@@ -173,6 +176,8 @@ def run_loop(
             logger.exception("Unhandled error in tick loop — sleeping and retrying")
             time.sleep(interval * 2)
 
+    return tick_count
+
 
 def main():
     parser = argparse.ArgumentParser(description="WeChat Smart Bot (SUGGEST mode)")
@@ -211,20 +216,28 @@ def main():
     bot = build_bot()
     logger.info("Bot built — using stub reply: '您好，有什么可以帮您的？'")
 
-    # Run loop
-    run_loop(
+    # Run loop (capture tick count from return value)
+    tick_count = run_loop(
         bot,
         interval=Config.SCAN_INTERVAL,
         once=args.once,
         frames_dir=args.frames,
     )
 
-    # Print summary
+    # Print summary & write report
     total = len(bot._store.list_recent())
     jsonl_exists = jsonl_path.exists()
     logger.info(
         "Done. %d suggestions in DB. JSONL at %s (exists=%s)",
         total, jsonl_path, jsonl_exists,
+    )
+
+    from observability import write_run_report
+    write_run_report(
+        report_path="data/run_report.md",
+        tick_count=tick_count,
+        total_scanned=total,
+        get_counts_fn=bot._store.get_counts,
     )
 
 

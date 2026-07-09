@@ -77,7 +77,7 @@ Every task: add tests (offline/mocked), keep the baseline green. Honor DEV_BRIEF
   frame), empty-OCR retry, exceptions per-conversation isolated (one bad convo doesn't kill the loop).
   *Done when:* `tests/test_robustness.py` covers blank-frame detection + isolated failure.
 
-- [ ] **T12. Observability.** Structured logging (levels, per-tick summary), and a `data/run_report.md`
+- [x] **T12. Observability.** Structured logging (levels, per-tick summary), and a `data/run_report.md`
   written on exit (counts: scanned/suggested/needs-confirm/skipped).
   *Done when:* a test asserts the report is produced from a fake run.
 
