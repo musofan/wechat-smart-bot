@@ -99,49 +99,56 @@ class Bot:
         results: list[TickResult] = []
 
         for conv in candidates:
-            if self._should_skip(conv):
-                logger.debug("tick: skip %s", conv.name)
+            try:
+                if self._should_skip(conv):
+                    logger.debug("tick: skip %s", conv.name)
+                    continue
+
+                # 2. "Open" the conversation (record-only in dry-run)
+                self._actuator.open_conversation(conv.y_full)
+
+                # 3. Read latest inbound message
+                msg = self._reader.latest_inbound(full_img)
+                if msg is None or msg.text in ("", "[图片]", "[语音]", "[文件]"):
+                    logger.debug("tick: %s — no usable inbound message", conv.name)
+                    continue
+
+                # 4. Draft reply
+                draft = self._reply_engine.draft([], msg.text)
+
+                # 5. Classify
+                classification = self._reply_engine.classify(msg.text)
+
+                # 6. Store suggestion
+                stored = self._store.save(
+                    contact=conv.name,
+                    incoming=msg.text,
+                    draft_reply=draft,
+                    needs_confirmation=classification.get("needs_confirmation", False),
+                    reason=classification.get("reason", ""),
+                )
+
+                logger.info(
+                    "tick: %s — inbound=%r draft=%r confirm=%s stored=%s",
+                    conv.name, msg.text[:40], draft[:40],
+                    classification.get("needs_confirmation"),
+                    stored,
+                )
+
+                results.append(TickResult(
+                    contact=conv.name,
+                    incoming=msg.text,
+                    draft_reply=draft,
+                    needs_confirmation=classification.get("needs_confirmation", False),
+                    reason=classification.get("reason", ""),
+                    stored=stored,
+                ))
+            except Exception as exc:
+                logger.error(
+                    "tick: exception processing %s: %s",
+                    conv.name, exc, exc_info=True,
+                )
                 continue
-
-            # 2. "Open" the conversation (record-only in dry-run)
-            self._actuator.open_conversation(conv.y_full)
-
-            # 3. Read latest inbound message
-            msg = self._reader.latest_inbound(full_img)
-            if msg is None or msg.text in ("", "[图片]", "[语音]", "[文件]"):
-                logger.debug("tick: %s — no usable inbound message", conv.name)
-                continue
-
-            # 4. Draft reply
-            draft = self._reply_engine.draft([], msg.text)
-
-            # 5. Classify
-            classification = self._reply_engine.classify(msg.text)
-
-            # 6. Store suggestion
-            stored = self._store.save(
-                contact=conv.name,
-                incoming=msg.text,
-                draft_reply=draft,
-                needs_confirmation=classification.get("needs_confirmation", False),
-                reason=classification.get("reason", ""),
-            )
-
-            logger.info(
-                "tick: %s — inbound=%r draft=%r confirm=%s stored=%s",
-                conv.name, msg.text[:40], draft[:40],
-                classification.get("needs_confirmation"),
-                stored,
-            )
-
-            results.append(TickResult(
-                contact=conv.name,
-                incoming=msg.text,
-                draft_reply=draft,
-                needs_confirmation=classification.get("needs_confirmation", False),
-                reason=classification.get("reason", ""),
-                stored=stored,
-            ))
 
         return results
 

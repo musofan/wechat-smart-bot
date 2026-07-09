@@ -59,12 +59,12 @@ Every task: add tests (offline/mocked), keep the baseline green. Honor DEV_BRIEF
   *Done when:* `tests/test_actuator.py` asserts `DryRunActuator` records the right action sequence for
   a send; `LiveActuator` is imported but NOT executed (guard with `@pytest.mark.live`).
 
-- [ ] **T9. Safety envelope `safety.py`.** Rate limiter (min gap + per-hour cap), business-hours gate,
+- [x] **T9. Safety envelope `safety.py`.** Rate limiter (min gap + per-hour cap), business-hours gate,
   existing-conversation-only guard, and a kill-switch (`data/STOP` file halts sending). `can_send()`
   returns (bool, reason).
   *Done when:* `tests/test_safety.py` covers each gate (freeze time via injected clock).
 
-- [ ] **T10. SEND mode wiring (guarded).** In `bot_core`, add `MODE=SEND` path that, *only if*
+- [x] **T10. SEND mode wiring (guarded).** In `bot_core`, add `MODE=SEND` path that, *only if*
   `not DRY_RUN and safety.can_send()`, would call the actuator to reply + forward. Since DRY_RUN is
   True, this path uses the DryRun actuator. Add the human-confirm queue (monitor replies `1`/`2 <text>`/`3`).
   *Done when:* `tests/test_send_flow.py` uses a DryRun actuator + `DRY_RUN=True` and asserts NO real
@@ -73,7 +73,7 @@ Every task: add tests (offline/mocked), keep the baseline green. Honor DEV_BRIEF
 
 ## Hardening
 
-- [ ] **T11. Robustness.** Handle: window not found / minimized, all-black capture (detect blank
+- [x] **T11. Robustness.** Handle: window not found / minimized, all-black capture (detect blank
   frame), empty-OCR retry, exceptions per-conversation isolated (one bad convo doesn't kill the loop).
   *Done when:* `tests/test_robustness.py` covers blank-frame detection + isolated failure.
 
