@@ -76,9 +76,14 @@ def run_once_live(log=print) -> int:
     bot = build_live_bot()
     cap = WeixinCapture()
     if not cap.find_window():
-        log("[FATAL] Weixin window not found (open it, not minimized).")
+        log("[FATAL] Weixin window not found. Open the WeChat main window "
+            "(it may be closed to the tray) and retry.")
         return 0
     full = cap.capture()
+    if cap.is_blank(full):
+        log("[FATAL] Captured a blank frame — the WeChat window is hidden/minimized "
+            "to the tray. Open its main window and retry.")
+        return 0
     unread = bot.scan_unread(full)
     log(f"[SCAN] unread (non-skipped) conversations: {[c.name for c in unread]}")
     sug = bot.handle_open_conversation(full)
