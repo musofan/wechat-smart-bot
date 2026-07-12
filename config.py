@@ -27,6 +27,9 @@ class Config:
     SENSENOVA_API_KEY: str = os.getenv("SENSENOVA_API_KEY", "")
     SENSENOVA_BASE_URL: str = os.getenv("SENSENOVA_BASE_URL", "https://token.sensenova.cn/v1")
     SENSENOVA_MODEL: str = os.getenv("SENSENOVA_MODEL", "sense-chat")
+    # Reasoning models (e.g. sensenova-6.7-flash-lite) spend ~1500+ tokens on hidden
+    # reasoning before emitting content — the budget must be generous or content is None.
+    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 
     # Bot Settings
     BOT_NAME: str = os.getenv("BOT_NAME", "")

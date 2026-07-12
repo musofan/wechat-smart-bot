@@ -65,6 +65,16 @@ def test_skips_groups_and_skipnames(tmp_path, actuator):
     assert store.count() == 0
 
 
+def test_skips_group_by_member_count(tmp_path, actuator):
+    # "机友圈儿RoboCrew（446)" has no 群 marker but the (446) member count = group
+    store = SuggestionStore(tmp_path / "b.db", tmp_path / "s.jsonl")
+    bot = Bot(None, FakeReader("机友圈儿RoboCrew（446)", "刘启迪：在吗"), FakeReplyEngine(),
+              store, _cfg(groups=("群",)), actuator=actuator)
+    assert bot.handle_open_conversation(_img()) is None
+    # a real person name is NOT skipped
+    assert bot.should_skip("蒋智华") is False
+
+
 def test_dedup_returns_none_second_time(tmp_path, actuator):
     store = SuggestionStore(tmp_path / "b.db", tmp_path / "s.jsonl")
     bot = Bot(None, FakeReader("客户", "在吗"), FakeReplyEngine(), store, _cfg(),

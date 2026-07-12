@@ -4,7 +4,11 @@ actuator is only ever used by the (separate, gated) SEND path."""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+# A trailing member-count like "（446)" / "(12)" is a strong group-chat signal.
+_GROUP_COUNT_RE = re.compile(r"[（(]\s*\d+\s*[)）]\s*$")
 
 
 @dataclass
@@ -37,6 +41,8 @@ class Bot:
         for g in getattr(self.config, "GROUP_MARKERS", []):
             if g and g in name:
                 return True
+        if _GROUP_COUNT_RE.search(name):  # e.g. "机友圈儿RoboCrew（446)"
+            return True
         return False
 
     def scan_unread(self, full):

@@ -37,9 +37,14 @@ def generate_reply(conversation_history: list[dict], current_message: str,
             model=Config.SENSENOVA_MODEL,
             messages=messages,
             temperature=0.7,
-            max_tokens=500,
+            max_tokens=Config.LLM_MAX_TOKENS,
         )
-        reply = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if not content:
+            finish = response.choices[0].finish_reason
+            print(f"[LLM WARN] empty content (finish={finish}); raise LLM_MAX_TOKENS if 'length'")
+            return "抱歉，我稍后回复您。"
+        reply = content.strip()
         # Remove potential quotes wrapping the reply
         if reply.startswith('"') and reply.endswith('"'):
             reply = reply[1:-1]
@@ -85,9 +90,9 @@ def classify_message(message: str, conversation_history: list[dict] = None) -> d
             model=Config.SENSENOVA_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_tokens=200,
+            max_tokens=Config.LLM_MAX_TOKENS,
         )
-        result_text = response.choices[0].message.content.strip()
+        result_text = (response.choices[0].message.content or "").strip()
         # Try to parse JSON from the response
         # Handle cases where LLM wraps in markdown code blocks
         if "```" in result_text:
