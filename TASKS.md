@@ -1,95 +1,68 @@
-# TASKS — overnight backlog (work top-to-bottom)
+# TASKS — Wave 2 backlog (work top-to-bottom)
 
-Tick a box only when `bash .ci/ci_check.sh` is green AND the commit is pushed.
-Every task: add tests (offline/mocked), keep the baseline green. Honor DEV_BRIEF safety guardrails.
+> 前一轮（night-build, T1–T14）已全部完成，见 `TASKS_NIGHT_BUILD_DONE.md` 与 `NIGHT_SUMMARY.md`。
+> 本轮目标：**从"fixture 全绿"走向"真实窗口验证过的 SUGGEST 模式产品"**。
+>
+> 安全护栏（延续 DEV_BRIEF，永远有效）：
+> 1. 默认 `DRY_RUN=True`、`MODE=SUGGEST`，禁止真实发送。
+> 2. 新增 `NAV_ENABLED`（默认 False）：只允许"点击打开会话"等导航动作，与发送动作分闸。
+> 3. 任何真实窗口操作必须操作员在场；live 测试一律 `@pytest.mark.live`。
+> 4. 每个任务：加测试（offline/mocked），`bash .ci/ci_check.sh` 全绿后勾选。
 
-## P1 — Suggest-only pipeline (highest priority)
+## Wave A — 真实世界验证（最高优先级，需操作员在场）
 
-- [x] **T1. Config surface.** Extend `config.py` with typed settings loaded from `.env`/defaults:
-  `PERSONA_PROMPT` (natural-person), `MONITOR_ACCOUNT` (default `musomuso`), `BOT_ACCOUNT`
-  (`NeXTSCENE小助手`), `SKIP_NAMES` (bots/self/公众号), `GROUP_MARKERS`, `SENSITIVE_KEYWORDS`
-  (投诉/退款/赔偿/合同/报价/律师…), `BUSINESS_HOURS`, `SCAN_INTERVAL`, `DRY_RUN=True`, `MODE=SUGGEST`.
-  *Done when:* `tests/test_config.py` loads config with env overrides + sane defaults; DRY_RUN defaults True.
+- [ ] **A1. 真机冒烟采集。** 操作员在场运行 `python run_suggest.py --once`，原始帧保存到
+  `data/live/`（保持 gitignored）；人工核对 ≥5 个真实会话的未读检测与 name/snippet 切分正确率。
+  *Done when:* `data/live/VALIDATION.md` 记录 OCR 准确率（正确/总数）、失败案例与原因分类。
 
-- [x] **T2. Vision hardening.** In `wechat_vision.py`: split name / snippet / timestamp cleanly
-  (timestamps like `14:33`, `昨天22:53`, `星期一` must not pollute the name); mark `[图片]/[语音]/
-  [文件]/[链接]` snippet types; make `LAYOUT` overridable. Improve first-row grouping (a lone snippet
-  shouldn't become the name).
-  *Done when:* `tests/test_vision.py` gains cases (mocked OCR) asserting name/snippet/timestamp split
-  and media-type tagging; existing tests stay green.
+- [ ] **A2. 真实帧回归测试。** 把 3–5 帧脱敏真实截图转为测试夹具（gitignored），
+  vision 测试在夹具存在时加载、缺失时 skip。
+  *Done when:* 有无夹具两种情况下 `pytest` 均绿。
 
-- [x] **T3. `wechat_reader.py`.** `Message` dataclass (sender: 'me'|'other'|'system', text, kind).
-  `read_open_conversation(full_img) -> list[Message]` from the `messages` region; discriminate own
-  vs other bubbles by **bubble color / x-position** (own = green, right-aligned); drop timestamps &
-  system lines; `latest_inbound()` helper. Header→contact name via `read_header`.
-  *Done when:* `tests/test_reader.py` feeds a synthetic message image (draw a right-green + left-grey
-  bubble) and asserts correct sender tagging + latest_inbound; OCR mocked.
+- [ ] **A3. 填充 `knowledge_base.md`。** 运营提供 NeXTSCENE 真实业务信息（营业信息/FAQ/联系方式），
+  消除全部"待补充"。回复质量直接取决于此。
+  *Done when:* 无占位符；`test_reply_engine.py` 增加一条"KB 事实进入 prompt"的断言。
 
-- [x] **T4. Knowledge base + `reply_engine.py`.** Flesh out `knowledge_base.md` structure (Q&A/facts;
-  the operator fills content later). `ReplyEngine(llm=...)` composes persona + KB into the system
-  prompt and returns a reply; `classify(message)` → `{needs_confirmation, reason}` via keywords +
-  (injected) LLM. LLM is **injected** (use `fake_llm` in tests).
-  *Done when:* `tests/test_reply_engine.py` verifies KB+persona reach the prompt, keyword hits force
-  `needs_confirmation`, and no network is used (fake LLM).
+## Wave B — 导航/发送分闸 + 确认闭环
 
-- [x] **T5. Suggestion store.** Extend `database.py` (or `store.py`) with a `suggestions` table +
-  `data/suggestions.jsonl` append: {ts, contact, incoming, draft_reply, needs_confirmation, reason,
-  status='suggested'}. Dedup by (contact, hash(incoming)).
-  *Done when:* `tests/test_store.py` covers insert + dedup + jsonl append (use tmp_path).
+- [ ] **B1. Actuator 拆分。** `NavigationActuator`（打开会话/滚动）与 `SendActuator` 分离；
+  新增 `NAV_ENABLED` 配置独立于 `DRY_RUN`。默认工厂：NAV_ENABLED=False 时导航也走 DryRun。
+  *Done when:* 测试断言"导航放行但发送仍被阻断"的组合态；LiveActuator 仍仅 live 标记。
 
-- [x] **T6. `bot_core.py` orchestrator (SUGGEST mode).** Wire it: `Bot(capture, vision, reader,
-  reply_engine, store, actuator, config)`; one `tick(full_img)` = detect unread → for each candidate
-  (skip self/bots/groups) → read latest inbound → draft → classify → store suggestion + build a
-  monitor-forward record. **No sending** (actuator only records). Inject everything.
-  *Done when:* `tests/test_bot_core.py` drives `tick()` with `synth_full` + fakes and asserts a
-  suggestion is produced and `actuator.actions` contains NO `send`.
+- [ ] **B2. 真机 SUGGEST 读完整会话。** NAV_ENABLED 下 `tick()` 真正点开未读会话，
+  用 `wechat_reader` 读消息区全文（而非列表摘要）生成建议。
+  *Done when:* 操作员在场的一次真实 dry-run 产出来自完整会话内容的建议记录。
 
-- [x] **T7. `run_suggest.py` entrypoint.** Loop skeleton: locate window → capture → `tick()` →
-  write suggestions; guarded by business-hours + `SCAN_INTERVAL`; `--once` flag; `--frames DIR` to
-  replay saved fixtures instead of the live window (for safe testing). Prints a summary; sends nothing.
-  *Done when:* `tests/test_run_suggest.py` runs `--once --frames <fixtures>` with a saved image and
-  asserts suggestions.jsonl is written; no live window needed.
+- [ ] **B3. 监控号确认闭环。** 扫描循环解析 musomuso 会话中的 `1` / `2 <文本>` / `3`，
+  回写 store 中建议状态（suggested→approved/custom/skipped）。
+  *Done when:* fake 帧驱动状态迁移的测试通过；run_report 计入确认统计。
 
-## P2 — Action layer (coded + tested via fakes, gated OFF overnight)
+## Wave C — 质量与运营化
 
-- [x] **T8. `wechat_actuator.py`.** `Actuator` protocol; `DryRunActuator` (logs intended actions);
-  `LiveActuator` using `win32clipboard` paste + `ctypes` `SendInput` + click at (x,y), with
-  human-like log-normal delays and optional bezier mouse move. `open_conversation(y)`, `focus_input()`,
-  `send_text(text)`. Default factory returns DryRun when `DRY_RUN`.
-  *Done when:* `tests/test_actuator.py` asserts `DryRunActuator` records the right action sequence for
-  a send; `LiveActuator` is imported but NOT executed (guard with `@pytest.mark.live`).
+- [ ] **C1. LLM 端点可配置。** OpenAI 兼容 `base_url`/`model` 走 `.env`（默认 SenseNova；
+  支持本地网关 127.0.0.1:18789 / 远端 LiteLLM）。
+  *Done when:* config 测试覆盖端点覆盖；操作员手动跑一次真实 API 冒烟并记录时延。
 
-- [x] **T9. Safety envelope `safety.py`.** Rate limiter (min gap + per-hour cap), business-hours gate,
-  existing-conversation-only guard, and a kill-switch (`data/STOP` file halts sending). `can_send()`
-  returns (bool, reason).
-  *Done when:* `tests/test_safety.py` covers each gate (freeze time via injected clock).
+- [ ] **C2. 建议复核 CLI。** `python review.py` 列出待办建议，支持 采用/改文/跳过 并回写 store。
+  （后续可升级为最小 Web 面板，对应旧 PRD 的 P3。）
+  *Done when:* 状态迁移测试通过；jsonl 与 SQLite 状态一致。
 
-- [x] **T10. SEND mode wiring (guarded).** In `bot_core`, add `MODE=SEND` path that, *only if*
-  `not DRY_RUN and safety.can_send()`, would call the actuator to reply + forward. Since DRY_RUN is
-  True, this path uses the DryRun actuator. Add the human-confirm queue (monitor replies `1`/`2 <text>`/`3`).
-  *Done when:* `tests/test_send_flow.py` uses a DryRun actuator + `DRY_RUN=True` and asserts NO real
-  send; with an injected fake "live" actuator + `DRY_RUN=False` in-test, asserts the intended
-  reply+forward sequence and that safety gates block when they should.
+- [ ] **C3. 指标进 run_report。** OCR 置信度均值、建议按状态分布、分类准确率（复核后回填）。
+  *Done when:* 报告含新字段且有测试断言。
 
-## Hardening
+## Wave D — 仓库卫生（可随时穿插，纯 autonomous 安全）
 
-- [x] **T11. Robustness.** Handle: window not found / minimized, all-black capture (detect blank
-  frame), empty-OCR retry, exceptions per-conversation isolated (one bad convo doesn't kill the loop).
-  *Done when:* `tests/test_robustness.py` covers blank-frame detection + isolated failure.
+- [ ] **D1. 遗留代码清理。** `wechat_monitor.py` / `wechat_smart_monitor.py` / `wechat_computer_use.py` /
+  `wechat_handler.py` / `main.py` / `message_router.py` / `database.py` 确认无引用后移入 `legacy/` 或删除；
+  `channel1_ilink_bot.py` 标记 experimental（`weixin-bot-sdk` 不进 requirements 主依赖）。
+  *Done when:* ruff+pytest 全绿；README 模块图更新。
 
-- [x] **T12. Observability.** Structured logging (levels, per-tick summary), and a `data/run_report.md`
-  written on exit (counts: scanned/suggested/needs-confirm/skipped).
-  *Done when:* a test asserts the report is produced from a fake run.
+- [ ] **D2. 文档对齐。** 更新 `PRD.md` 勾选项与 `PRD_DualChannel.md` 状态，使其与 night-build 实际架构一致。
+  *Done when:* 文档不再描述"未完成"的已完成项，链接可解析。
 
-- [x] **T13. Docs.** Write `RUNBOOK.md`: how to run `run_suggest.py --once --frames`, how to run live
-  suggest-mode (with the operator present), and the exact, deliberate steps to LATER enable send-mode
-  (flip DRY_RUN, pick a safe test contact = 文件传输助手 first). Update `README.md` module map.
-  *Done when:* files exist and are accurate; links resolve.
-
-- [x] **T14. Final sweep.** Full `ruff check .` clean on new files; `pytest` all green; remove dead
-  code; ensure `.ci/BLOCKED.md` lists anything deferred. Write a short `NIGHT_SUMMARY.md` of what got done.
-  *Done when:* green + summary committed + pushed.
+- [ ] **D3. 分支合并。** Wave A 完成后 `night-build` → `master`。
+  *Done when:* master 上 CI 全绿。
 
 ---
-_If you finish early:_ add more OCR/vision fixture tests from real captures (keep them gitignored),
-improve reply quality prompts, or add a tiny CLI to review/approve suggestions. Do NOT enable sending.
+_If you finish early:_ 为 VLM 兜底定位（Qwen3-VL 本地 4bit）写接口骨架（不实现），
+或把 review.py 升级为 FastAPI 单页面板。仍不得开启真实发送。
